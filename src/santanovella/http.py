@@ -61,7 +61,7 @@ class URL:
     host: str
     port: int
     path: str
-    query_params = Mapping[str, str]
+    query_params: Mapping[str, str]
 
     def __init__(self, url: str):
         try:
