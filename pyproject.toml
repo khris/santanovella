@@ -1,0 +1,17 @@
+[project]
+name = "santanovella"
+version = "0.1.0"
+description = "A simple web browser"
+readme = "README.md"
+authors = [
+    { name = "Hong Segi", email = "khris@khrislog.net" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+santanovella = "santanovella:main"
+
+[build-system]
+requires = ["uv_build>=0.8.23,<0.9.0"]
+build-backend = "uv_build"
