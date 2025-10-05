@@ -1,3 +1,4 @@
+import logging
 import socket
 import ssl
 from collections import defaultdict
@@ -61,11 +62,15 @@ class URL:
             self.scheme, url = url.split('://')
             assert self.scheme in Scheme
 
-            if not url.endswith('/'):
-                url += '/'
+            if '?' in url:
+                url, self.query_parameters = url.split('?', maxsplit=1)
 
-            self.host, url = url.split('/', 1)
-            self.path = f'/{url}'
+            if '/' in url:
+                self.host, url = url.split('/', 1)
+                self.path = f'/{url}'
+            else:
+                self.host = url
+                self.path = '/'
 
             if ':' in self.host:
                 self.host, port = self.host.split(':')
@@ -111,6 +116,7 @@ class URL:
         req = (f'GET {self.path} HTTP/1.0\r\n'
                f'Host: {self.host}\r\n'
                f'\r\n')
+        logging.debug('Request:\n%s', req)
         s.send(req.encode('utf-8'))
         res = s.makefile(
             mode='r',

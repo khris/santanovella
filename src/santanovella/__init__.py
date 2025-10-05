@@ -1,9 +1,11 @@
+import logging
 import sys
 
 from . import http, html
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.DEBUG)
     if len(sys.argv) < 2:
         print('usage: santanovella <url>')
         exit(1)
