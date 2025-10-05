@@ -1,6 +1,15 @@
 import socket
+import ssl
 from collections import defaultdict
+from enum import StrEnum
 from typing import TextIO, Iterable, Optional
+
+from .exceptions import UnreachableCodeException
+
+
+class Scheme(StrEnum):
+    HTTP = "http"
+    HTTPS = "https"
 
 
 class Header:
@@ -50,7 +59,7 @@ class URL:
     def __init__(self, url: str):
         try:
             self.scheme, url = url.split('://')
-            assert self.scheme == 'http'
+            assert self.scheme in Scheme
 
             if not url.endswith('/'):
                 url += '/'
@@ -62,18 +71,19 @@ class URL:
                 self.host, port = self.host.split(':')
                 self.port = int(port)
             else:
-                self.port = 80
+                if self.scheme == Scheme.HTTP:
+                    self.port = 80
+                elif self.scheme == Scheme.HTTPS:
+                    self.port = 443
+                else:
+                    raise UnreachableCodeException()
         except AssertionError:
-            raise NotImplementedError('santanovella is only implemented for HTTP protocol')
+            raise NotImplementedError(t'{self.scheme} is not supported by santanovella yet')
         except Exception:
-            raise ValueError(t'invalid URL: {url}, URL must be formatted as "http://<host>(:<port>)?(/<path>)?"')
+            raise ValueError(t'invalid URL: {url}, URL must be formatted as "<scheme>://<host>(:<port>)?(/<path>)?"')
 
     def request(self):
-        s = socket.socket(
-            family=socket.AF_INET,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
+        s = self._create_socket()
         s.connect((self.host, self.port))
 
         res = self._request_http(s)
@@ -83,6 +93,19 @@ class URL:
 
         s.close()
         return res_header, body
+
+    def _create_socket(self) -> socket.socket:
+        s = socket.socket(
+            family=socket.AF_INET,
+            type=socket.SOCK_STREAM,
+            proto=socket.IPPROTO_TCP,
+        )
+
+        if self.scheme == Scheme.HTTPS:
+            ctx = ssl.create_default_context()
+            s = ctx.wrap_socket(s, server_hostname=self.host)
+
+        return s
 
     def _request_http(self, s: socket.socket) -> TextIO:
         req = (f'GET {self.path} HTTP/1.0\r\n'
