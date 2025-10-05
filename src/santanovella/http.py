@@ -78,9 +78,9 @@ class URL:
                 else:
                     raise UnreachableCodeException()
         except AssertionError:
-            raise NotImplementedError(t'{self.scheme} is not supported by santanovella yet')
+            raise NotImplementedError(f'{self.scheme} is not supported by santanovella yet')
         except Exception:
-            raise ValueError(t'invalid URL: {url}, URL must be formatted as "<scheme>://<host>(:<port>)?(/<path>)?"')
+            raise ValueError(f'invalid URL: {url}, URL must be formatted as "<scheme>://<host>(:<port>)?(/<path>)?"')
 
     def request(self):
         s = self._create_socket()

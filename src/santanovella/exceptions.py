@@ -3,4 +3,4 @@ class UnreachableCodeException(Exception):
         super().__init__(*args, **kwargs)
 
     def __str__(self):
-        return t'UnreachableCodeException: application must not be reached this code'
+        return 'UnreachableCodeException: application must not be reached this code'
