@@ -1,8 +1,17 @@
-from . import http
+import sys
+
+from . import http, html
 
 
 def main() -> None:
-    url = http.URL('http://google.com')
+    if len(sys.argv) < 2:
+        print('usage: santanovella <url>')
+        exit(1)
+
+    url = http.URL(sys.argv[1])
     header, body = url.request()
-    print(header)
-    print(body)
+    print('# Response')
+    print('## Header')
+    http.show_headers(header)
+    print('## Body')
+    html.show(body)

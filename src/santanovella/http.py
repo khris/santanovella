@@ -37,23 +37,36 @@ class Header:
         else:
             raise KeyError(key)
 
+    def keys(self):
+        return self._headers.keys()
+
+    def items(self):
+        for key, values in self._headers.items():
+            for value in values:
+                yield key, value
+
 
 class URL:
-    def __init__(self, url: str) -> None:
-        self.scheme, url = url.split('://')
-        assert self.scheme == 'http'
+    def __init__(self, url: str):
+        try:
+            self.scheme, url = url.split('://')
+            assert self.scheme == 'http'
 
-        if not url.endswith('/'):
-            url += '/'
+            if not url.endswith('/'):
+                url += '/'
 
-        self.host, url = url.split('/', 1)
-        self.path = f'/{url}'
+            self.host, url = url.split('/', 1)
+            self.path = f'/{url}'
 
-        if ':' in self.host:
-            self.host, port = self.host.split(':')
-            self.port = int(port)
-        else:
-            self.port = 80
+            if ':' in self.host:
+                self.host, port = self.host.split(':')
+                self.port = int(port)
+            else:
+                self.port = 80
+        except AssertionError:
+            raise NotImplementedError('santanovella is only implemented for HTTP protocol')
+        except Exception:
+            raise ValueError(t'invalid URL: {url}, URL must be formatted as "http://<host>(:<port>)?(/<path>)?"')
 
     def request(self):
         s = socket.socket(
@@ -105,3 +118,9 @@ class URL:
                 break
             header, value = line.split(':', 1)
             yield header.casefold(), value.strip()
+
+
+def show_headers(header: Header):
+    max_width = max(len(key) for key in header.keys())
+    for key, value in header.items():
+        print(f'{key:<{max_width}}: {value}')
