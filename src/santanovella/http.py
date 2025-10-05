@@ -2,15 +2,15 @@ import logging
 import socket
 import ssl
 from collections import defaultdict
-from enum import StrEnum
-from typing import TextIO, Iterable, Optional
+from enum import StrEnum, auto
+from typing import TextIO, Iterable, Optional, Mapping
 
-from .exceptions import UnreachableCodeException
+from .exceptions import UnreachableCodeError, InvalidSchemeError
 
 
 class Scheme(StrEnum):
-    HTTP = "http"
-    HTTPS = "https"
+    HTTP = auto()
+    HTTPS = auto()
 
 
 class Header:
@@ -57,13 +57,24 @@ class Header:
 
 
 class URL:
+    scheme: Scheme
+    host: str
+    port: int
+    path: str
+    query_params = Mapping[str, str]
+
     def __init__(self, url: str):
         try:
-            self.scheme, url = url.split('://')
-            assert self.scheme in Scheme
+            scheme, url = url.split('://')
+            scheme = scheme.lower()
+
+            if scheme not in Scheme:
+                raise InvalidSchemeError(scheme)
+
+            self.scheme = Scheme(scheme)
 
             if '?' in url:
-                url, self.query_parameters = url.split('?', maxsplit=1)
+                url, query_params = url.split('?', maxsplit=1)
 
             if '/' in url:
                 self.host, url = url.split('/', 1)
@@ -81,9 +92,11 @@ class URL:
                 elif self.scheme == Scheme.HTTPS:
                     self.port = 443
                 else:
-                    raise UnreachableCodeException()
-        except AssertionError:
-            raise NotImplementedError(f'{self.scheme} is not supported by santanovella yet')
+                    raise UnreachableCodeError()
+        except InvalidSchemeError:
+            raise
+        except UnreachableCodeError:
+            raise
         except Exception:
             raise ValueError(f'invalid URL: {url}, URL must be formatted as "<scheme>://<host>(:<port>)?(/<path>)?"')
 
