@@ -8,9 +8,26 @@ from typing import TextIO, Iterable, Optional, Mapping
 from .exceptions import UnreachableCodeError, InvalidSchemeError
 
 
+DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
+SUPPORTED_HTTP_VERSION = '1.1'
+
+
 class Scheme(StrEnum):
     HTTP = auto()
     HTTPS = auto()
+
+
+class Method(StrEnum):
+    GET = 'GET'
+    HEAD = 'HEAD'
+    POST = 'POST'
+    PUT = 'PUT'
+    DELETE = 'DELETE'
+    CONNECT = 'CONNECT'
+    OPTIONS = 'OPTIONS'
+    TRACE = 'TRACE'
+    PATCH = 'PATCH'
+
 
 
 class Header:
@@ -104,7 +121,12 @@ class URL:
         s = self._create_socket()
         s.connect((self.host, self.port))
 
-        res = self._request_http(s)
+        req_header = Header((
+            ('Host', self.host),
+            ('Connection', 'close'),
+            ('User-Agent', DEFAULT_USER_AGENT),
+        ))
+        res = self._request_http(s, Method.GET, req_header)
         version, status, explanation = self._parse_http_version(res)
         res_header = URL._parse_http_header(res)
         body = res.read()
@@ -125,10 +147,11 @@ class URL:
 
         return s
 
-    def _request_http(self, s: socket.socket) -> TextIO:
-        req = (f'GET {self.path} HTTP/1.0\r\n'
-               f'Host: {self.host}\r\n'
-               f'\r\n')
+    def _request_http(self, s: socket.socket, method: Method, header: Header) -> TextIO:
+        req = '\r\n'.join((
+            f'{method} {self.path} HTTP/{SUPPORTED_HTTP_VERSION}',
+            *(f'{k}: {v}' for k, v in header.items()),
+        )) + '\r\n\r\n'
         logging.debug('Request:\n%s', req)
         s.send(req.encode('utf-8'))
         res = s.makefile(
