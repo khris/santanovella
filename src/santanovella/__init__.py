@@ -1,7 +1,9 @@
 import logging
 import sys
 
-from . import http, html
+from . import html
+from .protocol import http
+from .protocol.common import Url
 
 
 def main() -> None:
@@ -10,7 +12,7 @@ def main() -> None:
         print('usage: santanovella <url>')
         exit(1)
 
-    url = http.URL(sys.argv[1])
+    url = Url.create_from(sys.argv[1])
     header, body = url.request()
     print('# Response')
     print('## Header')

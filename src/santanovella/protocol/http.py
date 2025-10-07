@@ -2,19 +2,14 @@ import logging
 import socket
 import ssl
 from collections import defaultdict
-from enum import StrEnum, auto
-from typing import TextIO, Iterable, Optional, Mapping
+from enum import StrEnum
+from typing import TextIO, Optional, Mapping, Iterable
 
-from .exceptions import UnreachableCodeError, InvalidSchemeError
-
+from .common import Scheme, Url
+from ..exceptions import UnreachableCodeError, InvalidSchemeError
 
 DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
 SUPPORTED_HTTP_VERSION = '1.1'
-
-
-class Scheme(StrEnum):
-    HTTP = auto()
-    HTTPS = auto()
 
 
 class Method(StrEnum):
@@ -27,7 +22,6 @@ class Method(StrEnum):
     OPTIONS = 'OPTIONS'
     TRACE = 'TRACE'
     PATCH = 'PATCH'
-
 
 
 class Header:
@@ -73,7 +67,7 @@ class Header:
                 yield key, value
 
 
-class URL:
+class HttpUrl(Url):
     scheme: Scheme
     host: str
     port: int
@@ -85,7 +79,7 @@ class URL:
             scheme, url = url.split('://')
             scheme = scheme.lower()
 
-            if scheme not in Scheme:
+            if scheme not in self._allowed_schemes():
                 raise InvalidSchemeError(scheme)
 
             self.scheme = Scheme(scheme)
@@ -115,7 +109,7 @@ class URL:
         except UnreachableCodeError:
             raise
         except Exception:
-            raise ValueError(f'invalid URL: {url}, URL must be formatted as "<scheme>://<host>(:<port>)?(/<path>)?"')
+            raise ValueError(f'invalid HTTP(S) URL: {url}, URL must be formatted as "(http|https)://<host>(:<port>)?(/<path>)?"')
 
     def request(self):
         s = self._create_socket()
@@ -128,7 +122,7 @@ class URL:
         ))
         res = self._request_http(s, Method.GET, req_header)
         version, status, explanation = self._parse_http_version(res)
-        res_header = URL._parse_http_header(res)
+        res_header = self._parse_http_header(res)
         body = res.read()
 
         s.close()
@@ -161,14 +155,18 @@ class URL:
         )
         return res
 
+    @classmethod
+    def _allowed_schemes(cls) -> Iterable[Scheme]:
+        return Scheme.HTTP, Scheme.HTTPS
+
     @staticmethod
     def _parse_http_version(res: TextIO):
         status_line = res.readline()
         return status_line.split(' ', 2)
 
-    @staticmethod
-    def _parse_http_header(res: TextIO):
-        res_header = Header(header for header in URL._read_header_lines(res))
+    @classmethod
+    def _parse_http_header(cls, res: TextIO):
+        res_header = Header(header for header in cls._read_header_lines(res))
 
         assert 'transfer-encoding' not in res_header
         assert 'content-encoding' not in res_header
