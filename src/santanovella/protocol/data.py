@@ -15,7 +15,7 @@ class DataUrl(Url):
         scheme, data = url.split(':', 1)
         scheme = scheme.lower()
 
-        if scheme not in Scheme:
+        if scheme not in self._allowed_schemes():
             raise InvalidSchemeError(scheme)
 
         self.scheme = Scheme(scheme)

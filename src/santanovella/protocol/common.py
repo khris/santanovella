@@ -4,6 +4,7 @@ from collections import defaultdict
 from enum import StrEnum, auto
 from typing import ClassVar, MutableMapping, Iterable, Optional
 
+from santanovella.exceptions import InvalidSchemeError
 from santanovella.mime.mimetype import MimeType
 
 
@@ -135,5 +136,8 @@ class Url(metaclass=ABCMeta):
     @staticmethod
     def create_from(url: str):
         scheme, _ = url.split(':', 1)
-        klass = Url.subclass_map[Scheme(scheme)]
+        try:
+            klass = Url.subclass_map[Scheme(scheme)]
+        except ValueError:
+            raise InvalidSchemeError(scheme)
         return klass(url)
