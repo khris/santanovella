@@ -12,6 +12,7 @@ class Scheme(StrEnum):
     HTTPS = auto()
     FILE = auto()
     DATA = auto()
+    VIEW_SOURCE = "view-source"
 
 
 class Header:
