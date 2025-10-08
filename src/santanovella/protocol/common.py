@@ -72,6 +72,9 @@ class Header:
                 yield key, value
 
     def show(self):
+        if not self._headers:
+            return
+
         max_width = max(len(key) for key in self.keys())
         for key, value in self.items():
             print(f'{key:<{max_width}}: {value}')
