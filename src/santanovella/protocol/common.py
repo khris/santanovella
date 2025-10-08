@@ -100,7 +100,7 @@ class Response:
 
     @property
     def json(self):
-        return json.loads(self.body, encoding=self.content_type.charset)
+        return json.loads(self.body)
 
     @property
     def text(self):
