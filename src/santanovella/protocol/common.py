@@ -7,6 +7,7 @@ class Scheme(StrEnum):
     HTTP = auto()
     HTTPS = auto()
     FILE = auto()
+    DATA = auto()
 
 
 class Url(metaclass=ABCMeta):

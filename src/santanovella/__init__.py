@@ -13,9 +13,17 @@ def main() -> None:
         exit(1)
 
     url = Url.create_from(sys.argv[1])
-    header, body = url.request()
-    print('# Response')
-    print('## Header')
-    http.show_headers(header)
-    print('## Body')
-    html.show(body)
+    res = url.request()
+    if url.scheme in ('http', 'https'):
+        header, body = res
+        print('# Response')
+        print('## Header')
+        http.show_headers(header)
+        print('## Body')
+        html.show(body)
+    elif url.scheme == 'file':
+        print(f'# {url.path}')
+        print(res)
+    elif url.scheme == 'data':
+        print('# Data')
+        print(res)
