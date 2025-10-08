@@ -7,6 +7,7 @@ from typing import Mapping, Iterable
 
 from .common import Scheme, Url, Header, Response
 from ..exceptions import UnreachableCodeError, InvalidSchemeError
+from ..mime.mimetype import MimeType
 
 DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
 SUPPORTED_HTTP_VERSION = '1.1'
@@ -83,10 +84,13 @@ class HttpUrl(Url):
         version, status, explanation = self._parse_http_version(res)
         res_header = self._parse_http_header(res)
         body = res.read()
+        content_type = res_header.get_first_or_default(
+            'content-type', 'text/plain; charset=utf-8')
 
         s.close()
         return Response(
             status_code=int(status),
+            content_type=MimeType(content_type),
             headers=res_header,
             body=body,
         )
