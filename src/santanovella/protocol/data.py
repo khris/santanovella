@@ -12,7 +12,7 @@ class DataUrl(Url):
     data: bytes
 
     def __init__(self, url: str):
-        scheme, data = url.split(':')
+        scheme, data = url.split(':', 1)
         scheme = scheme.lower()
 
         if scheme not in Scheme:
