@@ -1,11 +1,11 @@
 import logging
 import socket
 import ssl
-from collections import defaultdict
 from enum import StrEnum
-from typing import TextIO, Optional, Mapping, Iterable
+from io import BufferedReader
+from typing import Mapping, Iterable
 
-from .common import Scheme, Url
+from .common import Scheme, Url, Header, Response
 from ..exceptions import UnreachableCodeError, InvalidSchemeError
 
 DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
@@ -22,49 +22,6 @@ class Method(StrEnum):
     OPTIONS = 'OPTIONS'
     TRACE = 'TRACE'
     PATCH = 'PATCH'
-
-
-class Header:
-    _headers: defaultdict[str, list[str]]
-
-    def __init__(self,
-                 initial_values: Optional[Iterable[tuple[str, str]]] = None):
-        self._headers = defaultdict(list[str])
-
-        for header, values in initial_values:
-            self._headers[header].append(values)
-
-    def __str__(self):
-        return str(self._headers)
-
-    def __repr__(self):
-        return repr(self._headers)
-
-    def __contains__(self, item):
-        return item in self._headers
-
-    def add(self, key, value):
-        self._headers[key].append(value)
-
-    def get(self, key: str) -> list[str]:
-        if key in self._headers:
-            return self._headers[key]
-        else:
-            raise KeyError(key)
-
-    def get_first(self, key: str):
-        if key in self._headers and len(self._headers[key]) > 0:
-            return self._headers[key][0]
-        else:
-            raise KeyError(key)
-
-    def keys(self):
-        return self._headers.keys()
-
-    def items(self):
-        for key, values in self._headers.items():
-            for value in values:
-                yield key, value
 
 
 class HttpUrl(Url):
@@ -109,9 +66,11 @@ class HttpUrl(Url):
         except UnreachableCodeError:
             raise
         except Exception:
-            raise ValueError(f'invalid HTTP(S) URL: {url}, URL must be formatted as "(http|https)://<host>(:<port>)?(/<path>)?"')
+            raise ValueError(
+                f'invalid HTTP(S) URL: {url}, URL must be formatted as '
+                f'"(http|https)://<host>(:<port>)?(/<path>)?"')
 
-    def request(self):
+    def request(self) -> Response:
         s = self._create_socket()
         s.connect((self.host, self.port))
 
@@ -126,7 +85,11 @@ class HttpUrl(Url):
         body = res.read()
 
         s.close()
-        return res_header, body
+        return Response(
+            status_code=int(status),
+            headers=res_header,
+            body=body,
+        )
 
     def _create_socket(self) -> socket.socket:
         s = socket.socket(
@@ -141,16 +104,16 @@ class HttpUrl(Url):
 
         return s
 
-    def _request_http(self, s: socket.socket, method: Method, header: Header) -> TextIO:
+    def _request_http(self, s: socket.socket, method: Method,
+                      header: Header) -> BufferedReader:
         req = '\r\n'.join((
             f'{method} {self.path} HTTP/{SUPPORTED_HTTP_VERSION}',
             *(f'{k}: {v}' for k, v in header.items()),
         )) + '\r\n\r\n'
         logging.debug('Request:\n%s', req)
-        s.send(req.encode('utf-8'))
+        s.send(req.encode())
         res = s.makefile(
-            mode='r',
-            encoding='utf-8',
+            mode='rb',
             newline='\r\n',
         )
         return res
@@ -160,12 +123,12 @@ class HttpUrl(Url):
         return Scheme.HTTP, Scheme.HTTPS
 
     @staticmethod
-    def _parse_http_version(res: TextIO):
+    def _parse_http_version(res: BufferedReader):
         status_line = res.readline()
-        return status_line.split(' ', 2)
+        return status_line.split(b' ', 2)
 
     @classmethod
-    def _parse_http_header(cls, res: TextIO):
+    def _parse_http_header(cls, res: BufferedReader):
         res_header = Header(header for header in cls._read_header_lines(res))
 
         assert 'transfer-encoding' not in res_header
@@ -174,16 +137,10 @@ class HttpUrl(Url):
         return res_header
 
     @staticmethod
-    def _read_header_lines(res: TextIO):
+    def _read_header_lines(res: BufferedReader):
         while True:
             line = res.readline()
-            if line == '\r\n':
+            if line == b'\r\n':
                 break
-            header, value = line.split(':', 1)
-            yield header.casefold(), value.strip()
-
-
-def show_headers(header: Header):
-    max_width = max(len(key) for key in header.keys())
-    for key, value in header.items():
-        print(f'{key:<{max_width}}: {value}')
+            header, value = line.split(b':', 1)
+            yield header.decode().casefold(), value.strip().decode()

@@ -2,8 +2,9 @@ from os import PathLike
 from pathlib import Path
 from typing import Iterable
 
-from .common import Scheme, Url
+from .common import Scheme, Url, Response
 from ..exceptions import InvalidSchemeError
+from ..mime.mimetype import MimeType
 
 
 class FileUrl(Url):
@@ -27,12 +28,16 @@ class FileUrl(Url):
             self.host, path = url.split('/', 1)
             self.path = Path(path)
 
-    def request(self):
+    def request(self) -> Response:
         if self.host != 'localhost':
-            raise NotImplementedError("access to a non-local file resources is not supported yet")
+            raise NotImplementedError('access to a non-local file resources '
+                                      'is not supported yet')
 
-        with open(self.path) as f:
-            return f.read()
+        with open(self.path, 'rb') as f:
+            return Response(
+                content_type=MimeType('text/plain; charset=utf-8'),
+                body = f.read(),
+            )
 
     @classmethod
     def _allowed_schemes(cls) -> Iterable[Scheme]:

@@ -3,7 +3,7 @@ import sys
 
 from . import html
 from .protocol import http
-from .protocol.common import Url
+from .protocol.common import Url, Response
 
 
 def main() -> None:
@@ -13,17 +13,16 @@ def main() -> None:
         exit(1)
 
     url = Url.create_from(sys.argv[1])
-    res = url.request()
+    res: Response = url.request()
     if url.scheme in ('http', 'https'):
-        header, body = res
         print('# Response')
         print('## Header')
-        http.show_headers(header)
+        res.headers.show()
         print('## Body')
-        html.show(body)
+        html.show(res.text)
     elif url.scheme == 'file':
         print(f'# {url.path}')
-        print(res)
+        print(res.text)
     elif url.scheme == 'data':
         print('# Data')
-        print(res)
+        print(res.text)
