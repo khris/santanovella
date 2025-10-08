@@ -1,3 +1,4 @@
+import json
 import logging
 import sys
 
@@ -14,15 +15,15 @@ def main() -> None:
 
     url = Url.create_from(sys.argv[1])
     res: Response = url.request()
-    if url.scheme in ('http', 'https'):
-        print('# Response')
-        print('## Header')
-        res.headers.show()
-        print('## Body')
-        html.show(res.text)
-    elif url.scheme == 'file':
-        print(f'# {url.path}')
-        print(res.text)
-    elif url.scheme == 'data':
-        print('# Data')
-        print(res.text)
+    print('# Response')
+    print('## Header')
+    res.headers.show()
+    print('## Body')
+    if res.content_type.type == 'text':
+        if res.content_type.subtype == 'html':
+            html.show(res.text)
+        else:
+            print(res.text)
+    if res.content_type.type == 'application':
+        if res.content_type.subtype == 'json':
+            print(json.dumps(res.json, indent=2))
