@@ -1,6 +1,7 @@
 import logging
 import socket
 import ssl
+from abc import abstractmethod
 from enum import StrEnum
 from io import BufferedReader
 from typing import Mapping, Iterable
@@ -56,19 +57,14 @@ class HttpUrl(Url):
                 self.host, port = self.host.split(':')
                 self.port = int(port)
             else:
-                if self.scheme == Scheme.HTTP:
-                    self.port = 80
-                elif self.scheme == Scheme.HTTPS:
-                    self.port = 443
-                else:
-                    raise UnreachableCodeError()
+                self.port = self._default_port()
         except InvalidSchemeError:
             raise
         except UnreachableCodeError:
             raise
         except Exception:
             raise ValueError(
-                f'invalid HTTP(S) URL: {url}, URL must be formatted as '
+                f'invalid URL: {url}, URL must be formatted as '
                 f'"(http|https)://<host>(:<port>)?(/<path>)?"')
 
     def request(self) -> Response:
@@ -101,11 +97,6 @@ class HttpUrl(Url):
             type=socket.SOCK_STREAM,
             proto=socket.IPPROTO_TCP,
         )
-
-        if self.scheme == Scheme.HTTPS:
-            ctx = ssl.create_default_context()
-            s = ctx.wrap_socket(s, server_hostname=self.host)
-
         return s
 
     def _request_http(self, s: socket.socket, method: Method,
@@ -124,7 +115,12 @@ class HttpUrl(Url):
 
     @classmethod
     def _allowed_schemes(cls) -> Iterable[Scheme]:
-        return Scheme.HTTP, Scheme.HTTPS
+        return ()
+
+    @staticmethod
+    @abstractmethod
+    def _default_port() -> int:
+        pass
 
     @staticmethod
     def _parse_http_version(res: BufferedReader):
@@ -148,3 +144,30 @@ class HttpUrl(Url):
                 break
             header, value = line.split(b':', 1)
             yield header.decode().casefold(), value.strip().decode()
+
+
+class PlainHttpUrl(HttpUrl):
+    @classmethod
+    def _allowed_schemes(cls) -> Iterable[Scheme]:
+        return Scheme.HTTP,
+
+    @staticmethod
+    def _default_port():
+        return 80
+
+
+class HttpsUrl(HttpUrl):
+    def _create_socket(self) -> socket.socket:
+        s = super()._create_socket()
+        ctx = ssl.create_default_context()
+        wrapped_socket = ctx.wrap_socket(s, server_hostname=self.host)
+
+        return wrapped_socket
+
+    @classmethod
+    def _allowed_schemes(cls) -> Iterable[Scheme]:
+        return Scheme.HTTPS,
+
+    @staticmethod
+    def _default_port():
+        return 443
