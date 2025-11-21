@@ -88,7 +88,7 @@ class Response:
     headers: Header
     body: bytes
 
-    def __init__(self, /,
+    def __init__(self, *,
                  status_code: int = 200,
                  content_type: Optional[MimeType] = None,
                  headers: Optional[Header] = None,
