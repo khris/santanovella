@@ -92,6 +92,8 @@ class HttpUrl(Url):
             content_type=MimeType(content_type),
             headers=res_header,
             body=body,
+            should_redirect= 300 <= status < 400,
+            redirect_url=res_header.get_first_or_default('location'),
         )
 
     @property
@@ -120,7 +122,8 @@ class HttpUrl(Url):
     @staticmethod
     def _parse_http_version(res: BinaryIO):
         status_line = res.readline()
-        return status_line.split(b' ', 2)
+        version, status, explanation = status_line.split(b' ', 2)
+        return version, int(status), explanation
 
     @classmethod
     def _parse_http_header(cls, res: BinaryIO):
