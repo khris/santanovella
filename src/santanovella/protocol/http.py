@@ -1,4 +1,5 @@
 import logging
+import re
 from abc import abstractmethod
 from enum import StrEnum
 from typing import BinaryIO, Iterable, Mapping
@@ -10,6 +11,7 @@ from ..net import SocketPool, Connection
 
 DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
 SUPPORTED_HTTP_VERSION = '1.1'
+ABS_URL_PATTERN = re.compile(r'^\w+://')
 
 
 class Method(StrEnum):
@@ -30,10 +32,11 @@ class HttpUrl(Url):
     port: int
     path: str
     query_params: Mapping[str, str]
+    _explicit_port: bool
 
     def __init__(self, url: str):
         try:
-            scheme, url = url.split('://')
+            scheme, url = url.split('://', 1)
             scheme = scheme.lower()
 
             if scheme not in self._allowed_schemes():
@@ -54,8 +57,10 @@ class HttpUrl(Url):
             if ':' in self.host:
                 self.host, port = self.host.split(':')
                 self.port = int(port)
+                self._explicit_port = True
             else:
                 self.port = self._default_port()
+                self._explicit_port = False
         except InvalidSchemeError:
             raise
         except UnreachableCodeError:
@@ -87,14 +92,47 @@ class HttpUrl(Url):
         content_type = res_header.get_first_or_default(
             'content-type', 'text/plain; charset=utf-8')
 
+        location = res_header.get_first_or_default('location')
+        if location:
+            location = self.join_as_abs_path(location)
+
         return Response(
             status_code=int(status),
             content_type=MimeType(content_type),
             headers=res_header,
             body=body,
             should_redirect= 300 <= status < 400,
-            redirect_url=res_header.get_first_or_default('location'),
+            redirect_path=location,
         )
+
+    def join_as_abs_path(self, path: str) -> str:
+        url_str = []
+        if ABS_URL_PATTERN.match(path):
+            return path
+        else:
+            url_str.append(f'{self.scheme}:')
+
+            if path.startswith('//'):
+                # Protocol-relative
+                url_str.append(path)
+            else:
+                url_str.append(f'//{self.host}')
+
+                if self._explicit_port:
+                    url_str.append(f':{self.port}')
+
+                if not path.startswith('/'):
+                    # Path-relative
+                    if self.path.endswith('/'):
+                        # Remove duplicated '/'
+                        url_str.append(self.path[:-1])
+                    else:
+                        url_str.append(self.path)
+
+                url_str.append(path)
+
+        return ''.join(url_str)
+
 
     @property
     def secure(self) -> bool:

@@ -39,6 +39,6 @@ def show_content_from(url):
         if not res.should_redirect:
             break
 
-        curr_url = Url.create_from(res.redirect_url)
+        curr_url = Url.create_from(res.redirect_path)
     else:
         logging.warning('redirected %d times, stopped' % MAX_REDIRECTION)

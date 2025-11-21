@@ -88,7 +88,7 @@ class Response:
     headers: Header
     body: bytes
     should_redirect: bool
-    redirect_url: Optional[str]
+    redirect_path: Optional[str]
 
     def __init__(self, *,
                  status_code: int = 200,
@@ -96,7 +96,7 @@ class Response:
                  headers: Optional[Header] = None,
                  body: Optional[bytes] = None,
                  should_redirect: bool = False,
-                 redirect_url: Optional[str] = None
+                 redirect_path: Optional[str] = None
                  ):
         self.status_code = status_code
         self.headers = headers or Header()
@@ -104,7 +104,7 @@ class Response:
         self.content_type = content_type \
                             or MimeType('text/plain; charset=utf-8')
         self.should_redirect = should_redirect
-        self.redirect_url = redirect_url
+        self.redirect_path = redirect_path
 
     @property
     def json(self):
@@ -140,7 +140,7 @@ class Url(metaclass=ABCMeta):
         pass
 
     @staticmethod
-    def create_from(url: str):
+    def create_from(url: str) -> Url:
         scheme, _ = url.split(':', 1)
         try:
             klass = Url.subclass_map[Scheme(scheme)]
