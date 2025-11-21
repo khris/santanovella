@@ -1,14 +1,12 @@
 import logging
-import socket
-import ssl
 from abc import abstractmethod
 from enum import StrEnum
-from io import BufferedReader
-from typing import Mapping, Iterable
+from typing import BinaryIO, Iterable, Mapping
 
 from .common import Scheme, Url, Header, Response
 from ..exceptions import UnreachableCodeError, InvalidSchemeError
 from ..mime.mimetype import MimeType
+from ..net import SocketPool, Connection
 
 DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
 SUPPORTED_HTTP_VERSION = '1.1'
@@ -68,22 +66,27 @@ class HttpUrl(Url):
                 f'"(http|https)://<host>(:<port>)?(/<path>)?"')
 
     def request(self) -> Response:
-        s = self._create_socket()
-        s.connect((self.host, self.port))
-
+        conn = SocketPool().get_connection(self.host, self.port, self.secure)
         req_header = Header((
             ('Host', self.host),
-            ('Connection', 'close'),
             ('User-Agent', DEFAULT_USER_AGENT),
         ))
-        res = self._request_http(s, Method.GET, req_header)
+        res = self._request_http(conn, Method.GET, req_header)
         version, status, explanation = self._parse_http_version(res)
         res_header = self._parse_http_header(res)
-        body = res.read()
+
+        connection = res_header \
+            .get_first_or_default('connection', 'keep-alive')
+        if connection == 'keep-alive':
+            content_len = int(res_header.get_first('content-length'))
+            body = res.read(content_len)
+        else:
+            body = res.read()
+            conn.close()
+
         content_type = res_header.get_first_or_default(
             'content-type', 'text/plain; charset=utf-8')
 
-        s.close()
         return Response(
             status_code=int(status),
             content_type=MimeType(content_type),
@@ -91,27 +94,19 @@ class HttpUrl(Url):
             body=body,
         )
 
-    def _create_socket(self) -> socket.socket:
-        s = socket.socket(
-            family=socket.AF_INET,
-            type=socket.SOCK_STREAM,
-            proto=socket.IPPROTO_TCP,
-        )
-        return s
+    @property
+    def secure(self) -> bool:
+        return self.scheme == Scheme.HTTPS
 
-    def _request_http(self, s: socket.socket, method: Method,
-                      header: Header) -> BufferedReader:
+    def _request_http(self, conn: Connection, method: Method,
+                      header: Header) -> BinaryIO:
         req = '\r\n'.join((
             f'{method} {self.path} HTTP/{SUPPORTED_HTTP_VERSION}',
             *(f'{k}: {v}' for k, v in header.items()),
         )) + '\r\n\r\n'
         logging.debug('Request:\n%s', req)
-        s.send(req.encode())
-        res = s.makefile(
-            mode='rb',
-            newline='\r\n',
-        )
-        return res
+        conn.send(req.encode())
+        return conn.recv()
 
     @classmethod
     def _allowed_schemes(cls) -> Iterable[Scheme]:
@@ -123,12 +118,12 @@ class HttpUrl(Url):
         pass
 
     @staticmethod
-    def _parse_http_version(res: BufferedReader):
+    def _parse_http_version(res: BinaryIO):
         status_line = res.readline()
         return status_line.split(b' ', 2)
 
     @classmethod
-    def _parse_http_header(cls, res: BufferedReader):
+    def _parse_http_header(cls, res: BinaryIO):
         res_header = Header(header for header in cls._read_header_lines(res))
 
         assert 'transfer-encoding' not in res_header
@@ -137,7 +132,7 @@ class HttpUrl(Url):
         return res_header
 
     @staticmethod
-    def _read_header_lines(res: BufferedReader):
+    def _read_header_lines(res: BinaryIO):
         while True:
             line = res.readline()
             if line == b'\r\n':
@@ -157,13 +152,6 @@ class PlainHttpUrl(HttpUrl):
 
 
 class HttpsUrl(HttpUrl):
-    def _create_socket(self) -> socket.socket:
-        s = super()._create_socket()
-        ctx = ssl.create_default_context()
-        wrapped_socket = ctx.wrap_socket(s, server_hostname=self.host)
-
-        return wrapped_socket
-
     @classmethod
     def _allowed_schemes(cls) -> Iterable[Scheme]:
         return Scheme.HTTPS,
