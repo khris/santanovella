@@ -2,6 +2,8 @@ import json
 import logging
 import sys
 
+logging.basicConfig(level=logging.DEBUG)
+
 from . import html
 from .protocol import http
 from .protocol.common import Url, Response
@@ -10,7 +12,6 @@ MAX_REDIRECTION = 2
 
 
 def main() -> None:
-    logging.basicConfig(level=logging.DEBUG)
     if len(sys.argv) < 2:
         print('usage: santanovella <url>')
         exit(1)
