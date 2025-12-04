@@ -12,6 +12,7 @@ MAX_REDIRECTION = 2
 WIDTH = 800
 HEIGHT = 600
 SCROLL_STEP = 100
+DIV_GAP = 27
 
 
 @dataclass
@@ -88,9 +89,13 @@ class Browser:
         step = Vec2(13.0, 18.0)
         cursor = Vec2(*astuple(step))
         for c in text:
-            if cursor.x >= WIDTH - step.x or c == '\n':
+            if cursor.x >= WIDTH:
                 cursor.x = step.x
                 cursor.y += step.y
+            elif c == '\n':
+                cursor.x = step.x
+                cursor.y += step.y + DIV_GAP
+
             display_list.append(Char(copy(cursor), c))
             cursor.x += step.x
         return display_list
