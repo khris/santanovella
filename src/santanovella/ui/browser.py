@@ -4,6 +4,7 @@ import tkinter
 from collections.abc import Iterable
 from copy import copy
 from dataclasses import astuple, dataclass
+from tkinter import EventType
 
 from .. import html
 from ..protocol.common import Response, Url
@@ -34,6 +35,7 @@ class Browser:
         self.window = tkinter.Tk()
         self.window.bind('<Down>', lambda e: self.do_scroll(e, SCROLL_STEP))
         self.window.bind('<Up>', lambda e: self.do_scroll(e, -SCROLL_STEP))
+        self.window.bind('<MouseWheel>', lambda e: self.do_scroll(e, SCROLL_STEP))
         self.canvas = tkinter.Canvas(
             self.window,
             width=WIDTH,
@@ -79,7 +81,14 @@ class Browser:
             self.canvas.create_text(astuple(scrolled_pos), text=char.char)
 
     def do_scroll(self, e, step):
-        self.scroll += step
+        match e.type:
+            case EventType.MouseWheel:
+                self.scroll += e.delta * step * 0.1
+            case EventType.KeyPress:
+                self.scroll += step
+            case _:
+                return
+        logging.debug('scroll %d' % self.scroll)
         self.canvas.delete('all')
         self.draw()
 
@@ -103,3 +112,7 @@ class Browser:
 
 def is_in(x, y, width, height, pos: Vec2) -> bool:
     return x <= pos.x <= x + width and y <= pos.y <= y + height
+
+def has_attr(obj, attr):
+    attr = getattr(obj, attr, None)
+    return attr is not None
