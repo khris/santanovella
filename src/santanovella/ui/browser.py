@@ -72,7 +72,10 @@ class Browser:
 
     def draw(self):
         for char in self.display_list:
-            self.canvas.create_text(char.pos.x, char.pos.y - self.scroll, text=char.char)
+            scrolled_pos = Vec2(char.pos.x, char.pos.y - self.scroll)
+            if not is_in(0, 0, WIDTH, HEIGHT, scrolled_pos):
+                continue
+            self.canvas.create_text(astuple(scrolled_pos), text=char.char)
 
     def do_scroll(self, e, step):
         self.scroll += step
@@ -91,3 +94,7 @@ class Browser:
             display_list.append(Char(copy(cursor), c))
             cursor.x += step.x
         return display_list
+
+
+def is_in(x, y, width, height, pos: Vec2) -> bool:
+    return x <= pos.x <= x + width and y <= pos.y <= y + height
