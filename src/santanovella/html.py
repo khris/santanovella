@@ -18,10 +18,11 @@ class HtmlParserState(Enum):
     Skip1Char = auto()
 
 
-def show(body: str):
+def lex(body: str):
     state_stack = [HtmlParserState.Default]
     tag_buf = []
     entity_buf = []
+    result_buf = ''
 
     for i, c in enumerate(body):
         match (state_stack[-1]):
@@ -32,7 +33,7 @@ def show(body: str):
                     state_stack.append(HtmlParserState.EntityReserved)
                     entity_buf.append(c)
                 else:
-                    print(c, end='')
+                    result_buf += c
 
             case HtmlParserState.Tag:
                 if c == '>':
@@ -50,13 +51,12 @@ def show(body: str):
 
                 entity_buf.append(c)
                 if c == ';':
-                    print(RESERVED_ENTITIES[''.join(entity_buf)]['characters'],
-                          end='')
+                    result_buf += RESERVED_ENTITIES[''.join(entity_buf)]['characters']
                     entity_buf.clear()
                     state_stack.pop()
                 elif c in LAST_CHARS_NO_CLOSING and body[i + 1] != ';':
                     try:
-                        print(RESERVED_ENTITIES[''.join(entity_buf)]['characters'], end='')
+                        result_buf += RESERVED_ENTITIES[''.join(entity_buf)]['characters']
                         entity_buf.clear()
                         state_stack.pop()
                         state_stack.append(HtmlParserState.Skip1Char)
@@ -70,7 +70,7 @@ def show(body: str):
                     continue
 
                 if c == ';':
-                    print(chr(int(''.join(entity_buf))), end='')
+                    result_buf += chr(int(''.join(entity_buf)))
                     entity_buf.clear()
                     state_stack.pop()
                 else:
@@ -78,7 +78,7 @@ def show(body: str):
 
             case HtmlParserState.EntityCodepointHex:
                 if c == ';':
-                    print(chr(int(''.join(entity_buf), base=16)), end='')
+                    result_buf = chr(int(''.join(entity_buf), base=16))
                     entity_buf.clear()
                     state_stack.pop()
                 else:
@@ -86,3 +86,5 @@ def show(body: str):
 
             case HtmlParserState.Skip1Char:
                 pass
+
+    return result_buf
