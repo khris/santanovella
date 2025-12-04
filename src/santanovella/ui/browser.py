@@ -11,6 +11,7 @@ from ..protocol.common import Response, Url
 MAX_REDIRECTION = 2
 WIDTH = 800
 HEIGHT = 600
+SCROLL_STEP = 100
 
 
 @dataclass
@@ -30,6 +31,8 @@ class Browser:
 
     def __init__(self):
         self.window = tkinter.Tk()
+        self.window.bind('<Down>', lambda e: self.do_scroll(e, SCROLL_STEP))
+        self.window.bind('<Up>', lambda e: self.do_scroll(e, -SCROLL_STEP))
         self.canvas = tkinter.Canvas(
             self.window,
             width=WIDTH,
@@ -37,6 +40,7 @@ class Browser:
         )
         self.canvas.pack()
         self.display_list = []
+        self.scroll = 0
 
     def show_content_from(self, url: Url):
         curr_url = url
@@ -68,7 +72,12 @@ class Browser:
 
     def draw(self):
         for char in self.display_list:
-            self.canvas.create_text(astuple(char.pos), text=char.char)
+            self.canvas.create_text(char.pos.x, char.pos.y - self.scroll, text=char.char)
+
+    def do_scroll(self, e, step):
+        self.scroll += step
+        self.canvas.delete('all')
+        self.draw()
 
     @staticmethod
     def layout(text) -> Iterable[Char]:
