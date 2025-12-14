@@ -1,6 +1,7 @@
 import logging
 import re
 from abc import abstractmethod
+from compression import gzip, zlib
 from enum import StrEnum
 from typing import BinaryIO, ClassVar, Iterable, Mapping
 
@@ -110,6 +111,12 @@ class HttpUrl(Url):
         if location:
             location = self.join_as_abs_path(location)
 
+        # Header: Content-Encoding, Transfer-Encoding
+        content_encoding = res_header.get_first_or_default('content-encoding')
+        transfer_encoding = res_header.get_first_or_default('content-encoding')
+        data_encoding = content_encoding or transfer_encoding
+        body = self._decode_payload(data_encoding, body)
+
         resp = Response(
             status_code=int(status),
             content_type=MimeType(content_type),
@@ -185,10 +192,6 @@ class HttpUrl(Url):
     @classmethod
     def _parse_http_header(cls, res: BinaryIO):
         res_header = Header(header for header in cls._read_header_lines(res))
-
-        assert 'transfer-encoding' not in res_header
-        assert 'content-encoding' not in res_header
-
         return res_header
 
     @staticmethod
@@ -225,6 +228,19 @@ class HttpUrl(Url):
 
         if others == 0 and ttl:
             self._response_cache.set(self._url, response, ttl_in_ms=ttl)
+
+    @staticmethod
+    def _decode_payload(data_encoding, body):
+        match data_encoding:
+            case 'gzip':
+                return gzip.decompress(body)
+            case 'deflate':
+                return zlib.decompress(body)
+            case 'identity':
+                return body
+            case _:
+                logging.warning(f'Unsupported encoding: {data_encoding}')
+                return body
 
 
 class PlainHttpUrl(HttpUrl):
