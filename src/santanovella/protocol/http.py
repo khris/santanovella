@@ -2,13 +2,15 @@ import logging
 import re
 from abc import abstractmethod
 from enum import StrEnum
-from typing import BinaryIO, Iterable, Mapping
+from typing import BinaryIO, ClassVar, Iterable, Mapping
 
-from .common import Scheme, Url, Header, Response
-from ..exceptions import UnreachableCodeError, InvalidSchemeError
+from .common import Header, Response, Scheme, Url
+from ..ds import SimpleKV, TtlCache
+from ..exceptions import InvalidSchemeError, UnreachableCodeError
 from ..mime.mimetype import MimeType
-from ..net import SocketPool, Connection
+from ..net import Connection, SocketPool
 
+DEFAULT_CACHE_DURATION = 30 * 24 * 60 * 60 * 1000  # in millisecond
 DEFAULT_USER_AGENT = f'Mozilla/5.0 (compatible; Santanovella/0.1.0)'
 SUPPORTED_HTTP_VERSION = '1.1'
 ABS_URL_PATTERN = re.compile(r'^\w+://')
@@ -27,15 +29,19 @@ class Method(StrEnum):
 
 
 class HttpUrl(Url):
+    _response_cache: ClassVar[TtlCache[str, Response]] = TtlCache[str, Response]()
+
     scheme: Scheme
     host: str
     port: int
     path: str
     query_params: Mapping[str, str]
+    _url: str
     _explicit_port: bool
 
     def __init__(self, url: str):
         try:
+            self._url = url
             scheme, url = url.split('://', 1)
             scheme = scheme.lower()
 
@@ -71,6 +77,11 @@ class HttpUrl(Url):
                 f'"(http|https)://<host>(:<port>)?(/<path>)?"')
 
     def request(self) -> Response:
+        cached = self._response_cache.get(self._url)
+        if cached:
+            logging.info(f'Cache hit: {self._url}')
+            return cached
+
         conn = SocketPool().get_connection(self.host, self.port, self.secure)
         req_header = Header((
             ('Host', self.host),
@@ -80,6 +91,7 @@ class HttpUrl(Url):
         version, status, explanation = self._parse_http_version(res)
         res_header = self._parse_http_header(res)
 
+        # Header: Connection
         connection = res_header \
             .get_first_or_default('connection', 'keep-alive')
         if connection == 'keep-alive':
@@ -89,21 +101,29 @@ class HttpUrl(Url):
             body = res.read()
             conn.close()
 
+        # Header: Content-Type
         content_type = res_header.get_first_or_default(
             'content-type', 'text/plain; charset=utf-8')
 
+        # Header: Location
         location = res_header.get_first_or_default('location')
         if location:
             location = self.join_as_abs_path(location)
 
-        return Response(
+        resp = Response(
             status_code=int(status),
             content_type=MimeType(content_type),
             headers=res_header,
             body=body,
-            should_redirect= 300 <= status < 400,
+            should_redirect=300 <= status < 400,
             redirect_path=location,
         )
+
+        # Header: Cache-Control
+        cache_control = res_header.get_first_or_default('cache-control')
+        self._handle_cache_control(cache_control, resp)
+
+        return resp
 
     def join_as_abs_path(self, path: str) -> str:
         url_str = []
@@ -132,7 +152,6 @@ class HttpUrl(Url):
                 url_str.append(path)
 
         return ''.join(url_str)
-
 
     @property
     def secure(self) -> bool:
@@ -181,6 +200,32 @@ class HttpUrl(Url):
             header, value = line.split(b':', 1)
             yield header.decode().casefold(), value.strip().decode()
 
+    def _handle_cache_control(self, cache_control, response):
+        if not cache_control:
+            self._response_cache.set(self._url, response,
+                                     ttl_in_ms=DEFAULT_CACHE_DURATION)
+            return
+
+        directives = _parse_multivalue(cache_control)
+        ttl = None
+        others = 0
+        for directive in directives:
+            match directive:
+                case ['max-age', raw_max_age] if (max_age := int(raw_max_age)) >= 0:
+                    ttl = max_age * 1000
+
+                case ['no-store']:
+                    del self._response_cache[self._url]
+
+                case ['public'] | ['private']:
+                    pass
+
+                case _:
+                    others += 1
+
+        if others == 0 and ttl:
+            self._response_cache.set(self._url, response, ttl_in_ms=ttl)
+
 
 class PlainHttpUrl(HttpUrl):
     @classmethod
@@ -200,3 +245,12 @@ class HttpsUrl(HttpUrl):
     @staticmethod
     def _default_port():
         return 443
+
+
+def _parse_multivalue(raw: str):
+    result = []
+    for directive in raw.split(','):
+        tokens = [elem.strip() for elem in directive.split('=', 1)]
+        kv = SimpleKV.from_seq(tokens)
+        result.append(kv)
+    return result
