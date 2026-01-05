@@ -1,11 +1,12 @@
 import logging
 import re
 from abc import abstractmethod
-from compression import gzip, zlib
 from enum import StrEnum
+from io import BytesIO
 from typing import BinaryIO, ClassVar, Iterable, Mapping
 
 from .common import Header, Response, Scheme, Url
+from .payload_reader import PlainTextReader, PayloadReader
 from ..ds import SimpleKV, TtlCache
 from ..exceptions import InvalidSchemeError, UnreachableCodeError
 from ..mime.mimetype import MimeType
@@ -87,35 +88,45 @@ class HttpUrl(Url):
         req_header = Header((
             ('Host', self.host),
             ('User-Agent', DEFAULT_USER_AGENT),
+            ('Accept-Encoding', 'gzip'),
         ))
         res = self._request_http(conn, Method.GET, req_header)
         version, status, explanation = self._parse_http_version(res)
         res_header = self._parse_http_header(res)
 
-        # Header: Connection
+        # Read headers
+        transfer_encoding = res_header.get_first_or_default('transfer-encoding')
+        content_encoding = res_header.get_first_or_default('content-encoding')
         connection = res_header \
             .get_first_or_default('connection', 'keep-alive')
-        if connection == 'keep-alive':
-            content_len = int(res_header.get_first('content-length'))
-            body = res.read(content_len)
-        else:
-            body = res.read()
-            conn.close()
-
-        # Header: Content-Type
+        content_len = res_header.get_first_or_default('content-length', None)
         content_type = res_header.get_first_or_default(
             'content-type', 'text/plain; charset=utf-8')
-
-        # Header: Location
         location = res_header.get_first_or_default('location')
+        cache_control = res_header.get_first_or_default('cache-control')
+
+        # Decoding
+        body = res
+        decoded = False
+
+        if transfer_encoding:
+            reader = PayloadReader.create_for(transfer_encoding)
+            body = reader.read(body, length=content_len if content_len else -1)
+            decoded = True
+
+        if content_encoding:
+            reader = PayloadReader.create_for(content_encoding)
+            body = reader.read(BytesIO(body), length=content_len if content_len else -1)
+            decoded = True
+
+        if not decoded:
+            body = PlainTextReader().read(body, length=content_len if content_len else -1)
+
         if location:
             location = self.join_as_abs_path(location)
 
-        # Header: Content-Encoding, Transfer-Encoding
-        content_encoding = res_header.get_first_or_default('content-encoding')
-        transfer_encoding = res_header.get_first_or_default('content-encoding')
-        data_encoding = content_encoding or transfer_encoding
-        body = self._decode_payload(data_encoding, body)
+        if connection and connection != 'keep-alive':
+            conn.close()
 
         resp = Response(
             status_code=int(status),
@@ -126,8 +137,6 @@ class HttpUrl(Url):
             redirect_path=location,
         )
 
-        # Header: Cache-Control
-        cache_control = res_header.get_first_or_default('cache-control')
         self._handle_cache_control(cache_control, resp)
 
         return resp
@@ -192,6 +201,7 @@ class HttpUrl(Url):
     @classmethod
     def _parse_http_header(cls, res: BinaryIO):
         res_header = Header(header for header in cls._read_header_lines(res))
+        logging.debug('Header:\n%s', res_header)
         return res_header
 
     @staticmethod
@@ -228,19 +238,6 @@ class HttpUrl(Url):
 
         if others == 0 and ttl:
             self._response_cache.set(self._url, response, ttl_in_ms=ttl)
-
-    @staticmethod
-    def _decode_payload(data_encoding, body):
-        match data_encoding:
-            case 'gzip':
-                return gzip.decompress(body)
-            case 'deflate':
-                return zlib.decompress(body)
-            case 'identity':
-                return body
-            case _:
-                logging.warning(f'Unsupported encoding: {data_encoding}')
-                return body
 
 
 class PlainHttpUrl(HttpUrl):
